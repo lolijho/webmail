@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Webmail</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📬</text></svg>"
+    />
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <!-- ================= LOGIN ================= -->
+    <div id="login-view" class="login-view hidden">
+      <div class="login-card">
+        <div class="login-brand">
+          <div class="brand-badge">📬</div>
+          <h1>Webmail</h1>
+          <p>Accedi con il tuo account IMAP / SMTP</p>
+        </div>
+
+        <div class="preset-row" id="preset-row">
+          <button type="button" class="preset" data-preset="gmail">Gmail</button>
+          <button type="button" class="preset" data-preset="outlook">Outlook</button>
+          <button type="button" class="preset" data-preset="yahoo">Yahoo</button>
+          <button type="button" class="preset" data-preset="icloud">iCloud</button>
+        </div>
+
+        <form id="login-form" class="login-form">
+          <label class="field">
+            <span>Indirizzo email</span>
+            <input type="email" name="email" placeholder="tu@esempio.com" required autocomplete="username" />
+          </label>
+
+          <label class="field">
+            <span>Password</span>
+            <input type="password" name="password" placeholder="Password o App Password" required autocomplete="current-password" />
+          </label>
+
+          <details class="advanced">
+            <summary>Impostazioni server</summary>
+            <div class="server-grid">
+              <div class="server-col">
+                <h3>IMAP (in arrivo)</h3>
+                <label class="field">
+                  <span>Host</span>
+                  <input type="text" name="imapHost" placeholder="imap.esempio.com" required />
+                </label>
+                <div class="row">
+                  <label class="field">
+                    <span>Porta</span>
+                    <input type="number" name="imapPort" value="993" required />
+                  </label>
+                  <label class="field checkbox">
+                    <input type="checkbox" name="imapSecure" checked />
+                    <span>SSL/TLS</span>
+                  </label>
+                </div>
+              </div>
+
+              <div class="server-col">
+                <h3>SMTP (in uscita)</h3>
+                <label class="field">
+                  <span>Host</span>
+                  <input type="text" name="smtpHost" placeholder="smtp.esempio.com" required />
+                </label>
+                <div class="row">
+                  <label class="field">
+                    <span>Porta</span>
+                    <input type="number" name="smtpPort" value="465" required />
+                  </label>
+                  <label class="field checkbox">
+                    <input type="checkbox" name="smtpSecure" checked />
+                    <span>SSL/TLS</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          </details>
+
+          <div id="login-error" class="login-error hidden"></div>
+
+          <button type="submit" class="btn-primary btn-block" id="login-btn">
+            <span class="btn-label">Accedi</span>
+          </button>
+        </form>
+        <p class="login-note">Le credenziali restano solo in memoria sul server, protette da un cookie di sessione.</p>
+      </div>
+    </div>
+
+    <!-- ================= APP ================= -->
+    <div id="app-view" class="app-view hidden">
+      <aside class="sidebar">
+        <div class="sidebar-top">
+          <div class="brand-badge small">📬</div>
+          <span class="sidebar-title">Webmail</span>
+        </div>
+        <button class="btn-primary compose-btn" id="compose-btn">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+          Scrivi
+        </button>
+        <nav class="folders" id="folder-list"></nav>
+        <div class="sidebar-footer">
+          <span class="user-email" id="user-email"></span>
+          <button class="icon-btn" id="logout-btn" title="Esci">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M16 17v-3H9v-4h7V7l5 5-5 5zM14 2a2 2 0 0 1 2 2v2h-2V4H4v16h10v-2h2v2a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10z"/></svg>
+          </button>
+        </div>
+      </aside>
+
+      <main class="mail-list-pane">
+        <header class="list-header">
+          <h2 id="folder-title">Posta in arrivo</h2>
+          <div class="search-box">
+            <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+            <input type="search" id="search-input" placeholder="Cerca…" />
+          </div>
+          <button class="icon-btn" id="refresh-btn" title="Aggiorna">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M17.65 6.35A8 8 0 1 0 19.73 14h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
+          </button>
+        </header>
+        <div class="message-list" id="message-list"></div>
+        <div class="list-pager" id="list-pager"></div>
+      </main>
+
+      <section class="reader-pane" id="reader-pane">
+        <div class="reader-empty" id="reader-empty">
+          <div class="reader-empty-icon">✉️</div>
+          <p>Seleziona un messaggio per leggerlo</p>
+        </div>
+        <article class="reader hidden" id="reader"></article>
+      </section>
+    </div>
+
+    <!-- ================= COMPOSE ================= -->
+    <div id="compose-overlay" class="compose-overlay hidden">
+      <div class="compose-window">
+        <header class="compose-header">
+          <span id="compose-title">Nuovo messaggio</span>
+          <button class="icon-btn" id="compose-close">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+          </button>
+        </header>
+        <form class="compose-form" id="compose-form">
+          <label class="compose-field">
+            <span>A</span>
+            <input type="text" name="to" placeholder="destinatario@esempio.com" required />
+          </label>
+          <label class="compose-field">
+            <span>Cc</span>
+            <input type="text" name="cc" placeholder="(facoltativo)" />
+          </label>
+          <label class="compose-field">
+            <span>Oggetto</span>
+            <input type="text" name="subject" placeholder="Oggetto" />
+          </label>
+          <textarea name="body" placeholder="Scrivi il tuo messaggio…"></textarea>
+          <div id="compose-error" class="compose-error hidden"></div>
+          <div class="compose-actions">
+            <button type="submit" class="btn-primary" id="send-btn">
+              <svg viewBox="0 0 24 24" width="16" height="16"><path fill="currentColor" d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/></svg>
+              Invia
+            </button>
+            <button type="button" class="btn-ghost" id="compose-discard">Annulla</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div id="toast" class="toast hidden"></div>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
