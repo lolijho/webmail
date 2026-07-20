@@ -103,6 +103,22 @@ form di login compilano automaticamente host e porte corrette.
 | Yahoo    | imap.mail.yahoo.com:993   | smtp.mail.yahoo.com:465  |
 | iCloud   | imap.mail.me.com:993      | smtp.mail.me.com:587     |
 
+## Risoluzione problemi
+
+| Errore                                                    | Causa probabile                                                              | Soluzione                                                                                             |
+| --------------------------------------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| *Autenticazione IMAP/SMTP fallita* / `Command failed`     | Password errata, oppure il provider richiede una App Password con la 2FA     | Genera una **App Password** (Gmail, Outlook, Yahoo, iCloud) e usala al posto della password normale  |
+| *Timeout di connessione* / `Failed to establish connection in required time` | Il container non raggiunge il server di posta                | Verifica host/porta; sul VPS/Coolify controlla che il **firewall consenta le porte in uscita**       |
+| *Host non trovato*                                        | Nome host errato                                                            | Controlla `imap.<provider>` / `smtp.<provider>`                                                       |
+| *Connessione rifiutata*                                   | Porta errata o SSL/TLS non coerente con la porta                            | IMAP: 993 (SSL). SMTP: 465 (SSL) oppure 587 (STARTTLS, togli la spunta SSL/TLS)                       |
+
+> **Porte di posta in uscita su Coolify/VPS.** Molti provider cloud (Hetzner,
+> DigitalOcean, AWS…) bloccano di default le porte SMTP in uscita (25, 465,
+> 587) per contrastare lo spam, e talvolta anche la 993 (IMAP). Se il login va
+> in timeout mentre le stesse credenziali funzionano in locale, quasi
+> certamente è il firewall dell'host: apri le porte in uscita dal pannello del
+> provider, oppure usa un servizio SMTP relay dedicato.
+
 ## Struttura
 
 ```

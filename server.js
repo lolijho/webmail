@@ -54,10 +54,12 @@ function requireAuth(req, res, next) {
   next();
 }
 
-// Wrap async route handlers so rejections become clean 500s.
+// Wrap async route handlers so rejections become clean 500s. Log a single
+// concise line — most failures here are expected auth/connection errors, not
+// bugs, so a full stack trace would just be noise.
 const wrap = (fn) => (req, res) =>
   Promise.resolve(fn(req, res)).catch((err) => {
-    console.error(err);
+    console.error(`[${req.method} ${req.path}] ${err.message || err}`);
     res.status(500).json({ error: err.message || 'Internal error' });
   });
 
