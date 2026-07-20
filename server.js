@@ -116,14 +116,23 @@ app.post(
       },
     };
 
-    // Validate credentials against both servers before creating a session.
+    // IMAP is required to read mail — a failure here blocks login.
     await verifyImap(config);
-    await verifySmtp(config);
+
+    // SMTP is validated too, but a failure (commonly: the host blocks
+    // outbound mail ports) must NOT stop the user from reading mail. Let them
+    // in and surface a warning; sending will report the same error if tried.
+    let smtpWarning = null;
+    try {
+      await verifySmtp(config);
+    } catch (err) {
+      smtpWarning = err.message;
+    }
 
     const sid = crypto.randomBytes(32).toString('hex');
     createSession(sid, config);
     res.cookie(COOKIE, sid, cookieOptions());
-    res.json({ ok: true, email });
+    res.json({ ok: true, email, smtpWarning });
   })
 );
 

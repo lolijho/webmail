@@ -21,6 +21,7 @@ const state = {
   messages: [],
   activeUid: null,
   activeMessage: null,
+  smtpWarning: null,
 };
 
 const $ = (sel) => document.querySelector(sel);
@@ -113,7 +114,11 @@ $('#login-form').addEventListener('submit', async (e) => {
   try {
     const data = await api('/api/login', { method: 'POST', body: JSON.stringify(payload) });
     state.email = data.email;
+    state.smtpWarning = data.smtpWarning || null;
     await enterApp();
+    if (state.smtpWarning) {
+      toast('Login riuscito, ma l’invio non è disponibile: ' + state.smtpWarning, 'error');
+    }
   } catch (err) {
     errEl.textContent = err.message;
     errEl.classList.remove('hidden');
@@ -462,7 +467,13 @@ function openCompose({ to = '', cc = '', subject = '', body = '', title = 'Nuovo
   form.dataset.inReplyTo = inReplyTo || '';
   form.dataset.references = references || '';
   $('#compose-title').textContent = title;
-  $('#compose-error').classList.add('hidden');
+  const errEl = $('#compose-error');
+  if (state.smtpWarning) {
+    errEl.textContent = 'Attenzione: l’invio SMTP non è disponibile — ' + state.smtpWarning;
+    errEl.classList.remove('hidden');
+  } else {
+    errEl.classList.add('hidden');
+  }
   composeOverlay.classList.remove('hidden');
   form.to.focus();
 }
