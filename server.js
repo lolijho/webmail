@@ -21,9 +21,15 @@ dotenv.config();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
+// Behind Coolify's reverse proxy (Traefik) so `secure` cookies and req.protocol
+// reflect the original HTTPS request.
+app.set('trust proxy', 1);
 app.use(express.json({ limit: '25mb' }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Health check for Coolify / container orchestration.
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
 
 const COOKIE = 'wm_sid';
 
@@ -208,6 +214,7 @@ app.get('*', (req, res) => {
 });
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`📬  Webmail running on http://localhost:${PORT}`);
+const HOST = process.env.HOST || '0.0.0.0';
+app.listen(PORT, HOST, () => {
+  console.log(`📬  Webmail running on http://${HOST}:${PORT}`);
 });

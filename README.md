@@ -53,7 +53,42 @@ cp .env.example .env
 | Variabile   | Default       | Descrizione                                     |
 | ----------- | ------------- | ----------------------------------------------- |
 | `PORT`      | `3000`        | Porta del server HTTP                           |
+| `HOST`      | `0.0.0.0`     | Indirizzo di bind (utile nei container)         |
 | `NODE_ENV`  | `development` | Con `production` i cookie diventano `secure`    |
+
+## Deploy su Coolify
+
+L'app è pronta per [Coolify](https://coolify.io): include un `Dockerfile`,
+un `docker-compose.yml`, un endpoint di health check (`/health`) e gira come
+utente non privilegiato bindando su `0.0.0.0`.
+
+1. In Coolify: **New Resource → Application** e collega questo repository
+   (branch `claude/webmail-imap-smtp-7k1zbs` o quello che hai unito).
+2. **Build Pack**: scegli **Dockerfile** (rilevato automaticamente).
+3. **Port**: imposta la porta esposta a **3000**.
+4. **Health Check Path**: `/health`.
+5. **Environment variables** (opzionali):
+   - `NODE_ENV=production` — già impostata nel Dockerfile; abilita i cookie `secure`
+   - `PORT=3000` — cambiala solo se esponi una porta diversa
+6. Assegna un dominio: Coolify gestisce HTTPS via Traefik. L'app ha
+   `trust proxy` attivo, quindi i cookie di sessione `secure` funzionano
+   dietro il proxy.
+7. **Deploy**.
+
+> In alternativa puoi usare il build pack **Docker Compose** puntando a
+> `docker-compose.yml`.
+
+### Build ed esecuzione manuale con Docker
+
+```bash
+docker build -t webmail .
+docker run -p 3000:3000 webmail
+# oppure
+docker compose up --build
+```
+
+> ⚠️ Le sessioni sono in memoria: al riavvio del container gli utenti devono
+> rifare il login. Per un'app a singola istanza è del tutto adeguato.
 
 ## Note sui provider
 
