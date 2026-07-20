@@ -39,6 +39,11 @@
             <input type="password" name="password" placeholder="Password o App Password" required autocomplete="current-password" />
           </label>
 
+          <div id="resend-note" class="resend-note hidden">
+            ⚡ Invio gestito da <strong>Resend</strong> (via HTTPS). Devi
+            configurare solo il server IMAP di ricezione.
+          </div>
+
           <details class="advanced">
             <summary>Impostazioni server</summary>
             <div class="server-grid">
@@ -60,7 +65,7 @@
                 </div>
               </div>
 
-              <div class="server-col">
+              <div class="server-col" id="smtp-col">
                 <h3>SMTP (in uscita)</h3>
                 <label class="field">
                   <span>Host</span>

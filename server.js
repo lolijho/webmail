@@ -16,6 +16,7 @@ import {
   verifyImap,
 } from './lib/imap.js';
 import { sendMail, verifySmtp } from './lib/smtp.js';
+import { resendConfigured, resendFrom, sendViaResend } from './lib/resend.js';
 import { probe } from './lib/diag.js';
 
 dotenv.config();
@@ -38,6 +39,12 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // Health check for Coolify / container orchestration.
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
+// Public runtime config (no secrets) so the login screen can adapt — e.g.
+// hide the SMTP fields when sending is handled by Resend over HTTPS.
+app.get('/api/config', (req, res) => {
+  res.json({ resend: resendConfigured(), mailFrom: process.env.MAIL_FROM || null });
+});
 
 const COOKIE = 'wm_sid';
 
@@ -90,7 +97,9 @@ app.post(
       smtpPassword,
     } = req.body || {};
 
-    if (!email || !imapHost || !smtpHost) {
+    // SMTP host is only required when sending goes through SMTP. With Resend
+    // enabled, outbound uses the HTTP API, so SMTP fields are optional.
+    if (!email || !imapHost || (!smtpHost && !resendConfigured())) {
       return res.status(400).json({ error: 'Missing required fields' });
     }
 
@@ -119,20 +128,23 @@ app.post(
     // IMAP is required to read mail — a failure here blocks login.
     await verifyImap(config);
 
-    // SMTP is validated too, but a failure (commonly: the host blocks
-    // outbound mail ports) must NOT stop the user from reading mail. Let them
-    // in and surface a warning; sending will report the same error if tried.
+    // Sending: if Resend is configured, outbound goes over HTTPS and there is
+    // no SMTP to verify. Otherwise validate SMTP, but non-fatally — a blocked
+    // outbound mail port must not stop the user from reading mail.
     let smtpWarning = null;
-    try {
-      await verifySmtp(config);
-    } catch (err) {
-      smtpWarning = err.message;
+    const sendVia = resendConfigured() ? 'resend' : 'smtp';
+    if (sendVia === 'smtp') {
+      try {
+        await verifySmtp(config);
+      } catch (err) {
+        smtpWarning = err.message;
+      }
     }
 
     const sid = crypto.randomBytes(32).toString('hex');
     createSession(sid, config);
     res.cookie(COOKIE, sid, cookieOptions());
-    res.json({ ok: true, email, smtpWarning });
+    res.json({ ok: true, email, smtpWarning, sendVia });
   })
 );
 
@@ -243,16 +255,15 @@ app.post(
     const { to, cc, bcc, subject, text, html, inReplyTo, references } =
       req.body || {};
     if (!to) return res.status(400).json({ error: 'Recipient required' });
-    const info = await sendMail(req.session, {
-      to,
-      cc,
-      bcc,
-      subject,
-      text,
-      html,
-      inReplyTo,
-      references,
-    });
+
+    const msg = { to, cc, bcc, subject, text, html, inReplyTo, references };
+    let info;
+    if (resendConfigured()) {
+      // Send over HTTPS via Resend — bypasses blocked SMTP ports.
+      info = await sendViaResend({ ...msg, from: resendFrom(req.session.email) });
+    } else {
+      info = await sendMail(req.session, msg);
+    }
     res.json({ ok: true, messageId: info.messageId });
   })
 );

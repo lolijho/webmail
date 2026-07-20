@@ -605,7 +605,27 @@ function formatSize(bytes) {
 // Init
 // ---------------------------------------------------------------------------
 
+async function applyRuntimeConfig() {
+  try {
+    const cfg = await fetch('/api/config').then((r) => r.json());
+    state.resend = !!cfg.resend;
+  } catch {
+    state.resend = false;
+  }
+  if (state.resend) {
+    // Sending goes through Resend over HTTPS — the SMTP server fields are not
+    // needed. Hide them and drop their `required` so the form submits.
+    $('#resend-note').classList.remove('hidden');
+    const smtpCol = $('#smtp-col');
+    if (smtpCol) smtpCol.classList.add('hidden');
+    document
+      .querySelectorAll('input[name="smtpHost"], input[name="smtpPort"]')
+      .forEach((el) => (el.required = false));
+  }
+}
+
 (async function init() {
+  await applyRuntimeConfig();
   try {
     const data = await api('/api/session');
     state.email = data.email;

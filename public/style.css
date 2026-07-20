@@ -363,6 +363,15 @@ textarea {
   color: var(--text-faint);
 }
 
+.resend-note {
+  background: var(--accent-ghost);
+  color: var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 11px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
 .login-note {
   margin-top: 18px;
   text-align: center;
