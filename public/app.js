@@ -128,6 +128,63 @@ $('#logout-btn').addEventListener('click', async () => {
   location.reload();
 });
 
+// Connectivity diagnostics: probe the configured IMAP/SMTP hosts from the
+// server so the user can see whether the container can reach them at all.
+$('#diag-btn').addEventListener('click', async () => {
+  const form = $('#login-form');
+  const box = $('#diag-result');
+  const btn = $('#diag-btn');
+  const params = new URLSearchParams();
+  if (form.imapHost.value.trim()) {
+    params.set('imapHost', form.imapHost.value.trim());
+    params.set('imapPort', form.imapPort.value || '993');
+  }
+  if (form.smtpHost.value.trim()) {
+    params.set('smtpHost', form.smtpHost.value.trim());
+    params.set('smtpPort', form.smtpPort.value || '465');
+  }
+  if (![...params.keys()].length) {
+    box.className = 'diag-result';
+    box.textContent = 'Scegli un preset o inserisci gli host prima di verificare.';
+    return;
+  }
+  btn.disabled = true;
+  const label = btn.textContent;
+  btn.textContent = 'Verifica in corso…';
+  box.className = 'diag-result';
+  box.textContent = '';
+  try {
+    const { results } = await api('/api/diag?' + params.toString());
+    box.innerHTML = results.map(renderDiag).join('');
+  } catch (err) {
+    box.textContent = err.message;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = label;
+  }
+});
+
+function renderDiag(r) {
+  const ok = r.tcp && r.tcp.ok;
+  const icon = ok ? '✅' : '❌';
+  const hasV4 = r.dns.ipv4 && r.dns.ipv4.length;
+  const hasV6 = r.dns.ipv6 && r.dns.ipv6.length;
+  let line;
+  if (ok) {
+    line = `raggiungibile in ${r.tcp.ms} ms (${escapeHtml(r.tcp.remoteAddress || '')})`;
+  } else if (r.tcp && r.tcp.error === 'timeout') {
+    line = 'timeout — porta probabilmente bloccata dal firewall dell\'host';
+  } else {
+    line = `errore: ${escapeHtml((r.tcp && r.tcp.error) || 'sconosciuto')}`;
+  }
+  const dns = `DNS: ${hasV4 ? 'IPv4 ✓' : 'IPv4 ✗'}${hasV6 ? ' · IPv6 ✓' : ''}`;
+  return `<div class="diag-row ${ok ? 'ok' : 'fail'}">
+    <strong>${icon} ${escapeHtml(r.service)} ${escapeHtml(r.host)}:${r.port}</strong>
+    <span>${line}</span>
+    <span class="diag-dns">${dns}</span>
+  </div>`;
+}
+
 // ---------------------------------------------------------------------------
 // App bootstrap
 // ---------------------------------------------------------------------------

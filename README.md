@@ -119,6 +119,26 @@ form di login compilano automaticamente host e porte corrette.
 > certamente è il firewall dell'host: apri le porte in uscita dal pannello del
 > provider, oppure usa un servizio SMTP relay dedicato.
 
+### Verifica della connettività
+
+Nella schermata di login, il pulsante **«Verifica connessione ai server»**
+testa la raggiungibilità TCP di IMAP e SMTP *dall'interno del container* e
+mostra, per ciascun servizio, se il DNS risolve e se la porta risponde:
+
+- ✅ **raggiungibile** → il problema è nelle credenziali (usa una App Password)
+- ❌ **timeout** → la porta è bloccata dal firewall/hosting (apri le porte in uscita)
+- ❌ **host non trovato** → nome del server errato
+
+Da riga di comando lo stesso controllo è disponibile via API:
+
+```bash
+curl "http://localhost:3000/api/diag?imapHost=imap.gmail.com&imapPort=993&smtpHost=smtp.gmail.com&smtpPort=465"
+```
+
+> L'app forza inoltre la risoluzione **IPv4-first**: molti host di posta
+> pubblicano record IPv6 (AAAA) ma i container Coolify/VPS spesso non hanno
+> routing IPv6, il che causerebbe timeout di connessione.
+
 ## Struttura
 
 ```

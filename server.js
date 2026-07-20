@@ -1,6 +1,7 @@
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import crypto from 'crypto';
+import dns from 'dns';
 import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import path from 'path';
@@ -15,8 +16,15 @@ import {
   verifyImap,
 } from './lib/imap.js';
 import { sendMail, verifySmtp } from './lib/smtp.js';
+import { probe } from './lib/diag.js';
 
 dotenv.config();
+
+// Prefer IPv4 when resolving hostnames. Many mail hosts (e.g. imap.gmail.com)
+// publish IPv6 (AAAA) records, but Docker/Coolify/VPS containers frequently
+// have no working IPv6 route — Node would then try IPv6 first and hang until
+// the connection times out. Trying IPv4 first avoids that stall.
+dns.setDefaultResultOrder('ipv4first');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -125,6 +133,36 @@ app.post('/api/logout', (req, res) => {
   res.clearCookie(COOKIE);
   res.json({ ok: true });
 });
+
+// Connectivity diagnostics. Tests raw TCP reachability from inside the
+// container to the given IMAP/SMTP hosts so a network/firewall block can be
+// told apart from wrong credentials. No secrets involved, so no auth required.
+app.get(
+  '/api/diag',
+  wrap(async (req, res) => {
+    const checks = [];
+    if (req.query.imapHost) {
+      checks.push(
+        probe(req.query.imapHost, Number(req.query.imapPort) || 993).then((r) => ({
+          service: 'IMAP',
+          ...r,
+        }))
+      );
+    }
+    if (req.query.smtpHost) {
+      checks.push(
+        probe(req.query.smtpHost, Number(req.query.smtpPort) || 465).then((r) => ({
+          service: 'SMTP',
+          ...r,
+        }))
+      );
+    }
+    if (!checks.length) {
+      return res.status(400).json({ error: 'Nessun host da verificare' });
+    }
+    res.json({ results: await Promise.all(checks) });
+  })
+);
 
 app.get(
   '/api/session',

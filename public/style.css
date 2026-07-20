@@ -325,6 +325,44 @@ textarea {
   font-weight: 500;
 }
 
+.diag-btn {
+  margin-top: -6px;
+  font-size: 13px;
+}
+.diag-result {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-soft);
+}
+.diag-result:empty {
+  display: none;
+}
+.diag-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: var(--surface-2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+}
+.diag-row.ok {
+  border-color: rgba(34, 176, 125, 0.5);
+}
+.diag-row.fail {
+  border-color: rgba(231, 76, 108, 0.5);
+}
+.diag-row strong {
+  font-size: 13px;
+  color: var(--text);
+}
+.diag-dns {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
 .login-note {
   margin-top: 18px;
   text-align: center;
