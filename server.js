@@ -7,6 +7,13 @@ import { fileURLToPath } from 'url';
 import path from 'path';
 
 import { createSession, getSession, destroySession } from './lib/sessions.js';
+import { register, login } from './lib/auth.js';
+import {
+  getUserById,
+  upsertAccount,
+  getAccount,
+  getAccountSecrets,
+} from './lib/db.js';
 import {
   listFolders,
   listMessages,
@@ -15,136 +22,102 @@ import {
   deleteMessage,
   verifyImap,
 } from './lib/imap.js';
-import { sendMail, verifySmtp } from './lib/smtp.js';
-import { resendConfigured, resendFrom, sendViaResend } from './lib/resend.js';
+import { resolveResendKey, sendViaResend } from './lib/resend.js';
 import { probe } from './lib/diag.js';
 
 dotenv.config();
 
-// Prefer IPv4 when resolving hostnames. Many mail hosts (e.g. imap.gmail.com)
-// publish IPv6 (AAAA) records, but Docker/Coolify/VPS containers frequently
-// have no working IPv6 route — Node would then try IPv6 first and hang until
-// the connection times out. Trying IPv4 first avoids that stall.
+// Prefer IPv4 when resolving hostnames — Docker/Coolify/VPS containers often
+// lack an IPv6 route, and Node trying IPv6 first would stall until timeout.
 dns.setDefaultResultOrder('ipv4first');
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const app = express();
-// Behind Coolify's reverse proxy (Traefik) so `secure` cookies and req.protocol
-// reflect the original HTTPS request.
 app.set('trust proxy', 1);
 app.use(express.json({ limit: '25mb' }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Health check for Coolify / container orchestration.
-app.get('/health', (req, res) => res.json({ status: 'ok' }));
-
-// Public runtime config (no secrets) so the login screen can adapt — e.g.
-// hide the SMTP fields when sending is handled by Resend over HTTPS.
-app.get('/api/config', (req, res) => {
-  res.json({ resend: resendConfigured(), mailFrom: process.env.MAIL_FROM || null });
-});
-
 const COOKIE = 'wm_sid';
+const REGISTRATION_OPEN = process.env.REGISTRATION_OPEN !== 'false';
 
-// --- Auth helpers ----------------------------------------------------------
+// --- Helpers ---------------------------------------------------------------
 
 function cookieOptions() {
   return {
     httpOnly: true,
     sameSite: 'lax',
     secure: process.env.NODE_ENV === 'production',
-    maxAge: 1000 * 60 * 60 * 12, // 12h
+    maxAge: 1000 * 60 * 60 * 12,
   };
 }
 
 function requireAuth(req, res, next) {
   const sid = req.cookies[COOKIE];
   const session = sid && getSession(sid);
-  if (!session) {
-    return res.status(401).json({ error: 'Not authenticated' });
-  }
-  req.session = session;
+  const user = session && getUserById(session.userId);
+  if (!user) return res.status(401).json({ error: 'Not authenticated' });
+  req.user = user;
   next();
 }
 
-// Wrap async route handlers so rejections become clean 500s. Log a single
-// concise line — most failures here are expected auth/connection errors, not
-// bugs, so a full stack trace would just be noise.
+// Load the logged-in user's mail account (with decrypted secrets) for IMAP /
+// send calls. 409 tells the client to open the settings screen.
+function requireAccount(req, res, next) {
+  const acct = getAccountSecrets(req.user.id);
+  if (!acct) {
+    return res.status(409).json({ error: 'Account email non configurato' });
+  }
+  req.account = acct;
+  next();
+}
+
 const wrap = (fn) => (req, res) =>
   Promise.resolve(fn(req, res)).catch((err) => {
     console.error(`[${req.method} ${req.path}] ${err.message || err}`);
     res.status(500).json({ error: err.message || 'Internal error' });
   });
 
-// --- Routes ----------------------------------------------------------------
+// --- Health & config -------------------------------------------------------
+
+app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
+app.get('/api/config', (req, res) => {
+  res.json({
+    registrationOpen: REGISTRATION_OPEN,
+    globalResend: !!process.env.RESEND_API_KEY,
+  });
+});
+
+// --- App authentication ----------------------------------------------------
+
+function startSession(res, userId) {
+  const sid = crypto.randomBytes(32).toString('hex');
+  createSession(sid, userId);
+  res.cookie(COOKIE, sid, cookieOptions());
+}
+
+app.post(
+  '/api/register',
+  wrap(async (req, res) => {
+    if (!REGISTRATION_OPEN) {
+      return res.status(403).json({ error: 'Registrazione disabilitata' });
+    }
+    const { username, password } = req.body || {};
+    const user = await register(username, password);
+    startSession(res, user.id);
+    res.json({ ok: true, username: user.username });
+  })
+);
 
 app.post(
   '/api/login',
   wrap(async (req, res) => {
-    const {
-      email,
-      imapHost,
-      imapPort,
-      imapSecure,
-      imapUser,
-      imapPassword,
-      smtpHost,
-      smtpPort,
-      smtpSecure,
-      smtpUser,
-      smtpPassword,
-    } = req.body || {};
-
-    // SMTP host is only required when sending goes through SMTP. With Resend
-    // enabled, outbound uses the HTTP API, so SMTP fields are optional.
-    if (!email || !imapHost || (!smtpHost && !resendConfigured())) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    const config = {
-      email,
-      imap: {
-        host: imapHost,
-        port: Number(imapPort) || 993,
-        secure: imapSecure !== false,
-        auth: {
-          user: imapUser || email,
-          pass: imapPassword,
-        },
-      },
-      smtp: {
-        host: smtpHost,
-        port: Number(smtpPort) || 465,
-        secure: smtpSecure !== false,
-        auth: {
-          user: smtpUser || email,
-          pass: smtpPassword,
-        },
-      },
-    };
-
-    // IMAP is required to read mail — a failure here blocks login.
-    await verifyImap(config);
-
-    // Sending: if Resend is configured, outbound goes over HTTPS and there is
-    // no SMTP to verify. Otherwise validate SMTP, but non-fatally — a blocked
-    // outbound mail port must not stop the user from reading mail.
-    let smtpWarning = null;
-    const sendVia = resendConfigured() ? 'resend' : 'smtp';
-    if (sendVia === 'smtp') {
-      try {
-        await verifySmtp(config);
-      } catch (err) {
-        smtpWarning = err.message;
-      }
-    }
-
-    const sid = crypto.randomBytes(32).toString('hex');
-    createSession(sid, config);
-    res.cookie(COOKIE, sid, cookieOptions());
-    res.json({ ok: true, email, smtpWarning, sendVia });
+    const { username, password } = req.body || {};
+    const user = await login(username, password);
+    startSession(res, user.id);
+    res.json({ ok: true, username: user.username });
   })
 );
 
@@ -155,11 +128,172 @@ app.post('/api/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-// Connectivity diagnostics. Tests raw TCP reachability from inside the
-// container to the given IMAP/SMTP hosts so a network/firewall block can be
-// told apart from wrong credentials. No secrets involved, so no auth required.
+app.get(
+  '/api/session',
+  wrap(async (req, res) => {
+    const sid = req.cookies[COOKIE];
+    const session = sid && getSession(sid);
+    const user = session && getUserById(session.userId);
+    if (!user) return res.status(401).json({ error: 'Not authenticated' });
+    const account = getAccount(user.id);
+    const canSend = !!process.env.RESEND_API_KEY || !!(account && account.hasResendKey);
+    res.json({
+      username: user.username,
+      account, // null until configured
+      canSend,
+    });
+  })
+);
+
+// --- Mail account settings -------------------------------------------------
+
+app.get(
+  '/api/settings',
+  requireAuth,
+  wrap(async (req, res) => {
+    res.json({ account: getAccount(req.user.id) });
+  })
+);
+
+app.post(
+  '/api/settings',
+  requireAuth,
+  wrap(async (req, res) => {
+    const { email, imapHost, imapPort, imapSecure, imapPassword, resendKey } =
+      req.body || {};
+    if (!email || !imapHost) {
+      return res.status(400).json({ error: 'Email e host IMAP sono obbligatori' });
+    }
+
+    // Validate IMAP before saving. Reuse an existing stored password when the
+    // field is left blank on edit.
+    const existing = getAccountSecrets(req.user.id);
+    const passToTest =
+      imapPassword && imapPassword !== '' ? imapPassword : existing && existing.imap.auth.pass;
+    if (!passToTest) {
+      return res.status(400).json({ error: 'Password IMAP obbligatoria' });
+    }
+    await verifyImap({
+      imap: {
+        host: imapHost,
+        port: Number(imapPort) || 993,
+        secure: imapSecure !== false,
+        auth: { user: email, pass: passToTest },
+      },
+    });
+
+    const account = upsertAccount(req.user.id, {
+      email,
+      imapHost,
+      imapPort,
+      imapSecure: imapSecure !== false,
+      imapPassword,
+      resendKey,
+    });
+    res.json({ ok: true, account });
+  })
+);
+
+// --- Mail (IMAP) -----------------------------------------------------------
+
+app.get(
+  '/api/folders',
+  requireAuth,
+  requireAccount,
+  wrap(async (req, res) => {
+    res.json({ folders: await listFolders(req.account) });
+  })
+);
+
+app.get(
+  '/api/messages',
+  requireAuth,
+  requireAccount,
+  wrap(async (req, res) => {
+    const folder = req.query.folder || 'INBOX';
+    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
+    const pageSize = Math.min(100, parseInt(req.query.pageSize, 10) || 30);
+    const search = (req.query.search || '').trim();
+    res.json(await listMessages(req.account, { folder, page, pageSize, search }));
+  })
+);
+
+app.get(
+  '/api/message',
+  requireAuth,
+  requireAccount,
+  wrap(async (req, res) => {
+    const folder = req.query.folder || 'INBOX';
+    const uid = parseInt(req.query.uid, 10);
+    if (!uid) return res.status(400).json({ error: 'Missing uid' });
+    res.json(await getMessage(req.account, { folder, uid }));
+  })
+);
+
+app.post(
+  '/api/message/flags',
+  requireAuth,
+  requireAccount,
+  wrap(async (req, res) => {
+    const { folder = 'INBOX', uid, add = [], remove = [] } = req.body || {};
+    if (!uid) return res.status(400).json({ error: 'Missing uid' });
+    await setFlags(req.account, { folder, uid, add, remove });
+    res.json({ ok: true });
+  })
+);
+
+app.post(
+  '/api/message/delete',
+  requireAuth,
+  requireAccount,
+  wrap(async (req, res) => {
+    const { folder = 'INBOX', uid } = req.body || {};
+    if (!uid) return res.status(400).json({ error: 'Missing uid' });
+    await deleteMessage(req.account, { folder, uid });
+    res.json({ ok: true });
+  })
+);
+
+// --- Send (Resend) ---------------------------------------------------------
+
+app.post(
+  '/api/send',
+  requireAuth,
+  requireAccount,
+  wrap(async (req, res) => {
+    const { to, cc, bcc, subject, text, html, inReplyTo, references } =
+      req.body || {};
+    if (!to) return res.status(400).json({ error: 'Destinatario obbligatorio' });
+
+    const apiKey = resolveResendKey(req.account.resendKey);
+    if (!apiKey) {
+      return res.status(400).json({
+        error:
+          "Invio non configurato: aggiungi una API key Resend nelle impostazioni, oppure imposta RESEND_API_KEY sul server.",
+      });
+    }
+
+    const info = await sendViaResend({
+      apiKey,
+      from: req.account.email,
+      to,
+      cc,
+      bcc,
+      subject,
+      text,
+      html,
+      inReplyTo,
+      references,
+    });
+    res.json({ ok: true, messageId: info.messageId });
+  })
+);
+
+// --- Diagnostics -----------------------------------------------------------
+
 app.get(
   '/api/diag',
+  requireAuth,
   wrap(async (req, res) => {
     const checks = [];
     if (req.query.imapHost) {
@@ -170,101 +304,10 @@ app.get(
         }))
       );
     }
-    if (req.query.smtpHost) {
-      checks.push(
-        probe(req.query.smtpHost, Number(req.query.smtpPort) || 465).then((r) => ({
-          service: 'SMTP',
-          ...r,
-        }))
-      );
-    }
     if (!checks.length) {
       return res.status(400).json({ error: 'Nessun host da verificare' });
     }
     res.json({ results: await Promise.all(checks) });
-  })
-);
-
-app.get(
-  '/api/session',
-  wrap(async (req, res) => {
-    const sid = req.cookies[COOKIE];
-    const session = sid && getSession(sid);
-    if (!session) return res.status(401).json({ error: 'Not authenticated' });
-    res.json({ email: session.email });
-  })
-);
-
-app.get(
-  '/api/folders',
-  requireAuth,
-  wrap(async (req, res) => {
-    res.json({ folders: await listFolders(req.session) });
-  })
-);
-
-app.get(
-  '/api/messages',
-  requireAuth,
-  wrap(async (req, res) => {
-    const folder = req.query.folder || 'INBOX';
-    const page = Math.max(1, parseInt(req.query.page, 10) || 1);
-    const pageSize = Math.min(100, parseInt(req.query.pageSize, 10) || 30);
-    const search = (req.query.search || '').trim();
-    res.json(await listMessages(req.session, { folder, page, pageSize, search }));
-  })
-);
-
-app.get(
-  '/api/message',
-  requireAuth,
-  wrap(async (req, res) => {
-    const folder = req.query.folder || 'INBOX';
-    const uid = parseInt(req.query.uid, 10);
-    if (!uid) return res.status(400).json({ error: 'Missing uid' });
-    res.json(await getMessage(req.session, { folder, uid }));
-  })
-);
-
-app.post(
-  '/api/message/flags',
-  requireAuth,
-  wrap(async (req, res) => {
-    const { folder = 'INBOX', uid, add = [], remove = [] } = req.body || {};
-    if (!uid) return res.status(400).json({ error: 'Missing uid' });
-    await setFlags(req.session, { folder, uid, add, remove });
-    res.json({ ok: true });
-  })
-);
-
-app.post(
-  '/api/message/delete',
-  requireAuth,
-  wrap(async (req, res) => {
-    const { folder = 'INBOX', uid } = req.body || {};
-    if (!uid) return res.status(400).json({ error: 'Missing uid' });
-    await deleteMessage(req.session, { folder, uid });
-    res.json({ ok: true });
-  })
-);
-
-app.post(
-  '/api/send',
-  requireAuth,
-  wrap(async (req, res) => {
-    const { to, cc, bcc, subject, text, html, inReplyTo, references } =
-      req.body || {};
-    if (!to) return res.status(400).json({ error: 'Recipient required' });
-
-    const msg = { to, cc, bcc, subject, text, html, inReplyTo, references };
-    let info;
-    if (resendConfigured()) {
-      // Send over HTTPS via Resend — bypasses blocked SMTP ports.
-      info = await sendViaResend({ ...msg, from: resendFrom(req.session.email) });
-    } else {
-      info = await sendMail(req.session, msg);
-    }
-    res.json({ ok: true, messageId: info.messageId });
   })
 );
 

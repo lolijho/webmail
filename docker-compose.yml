@@ -1,7 +1,6 @@
 services:
   webmail:
     build: .
-    # Coolify inietta il proprio proxy: esponi solo la porta interna.
     expose:
       - '3000'
     ports:
@@ -9,6 +8,16 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+      # Cifratura dei segreti salvati (IMAP password, chiavi Resend).
+      # Genera una chiave: openssl rand -base64 32
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-}
+      # Chiave Resend globale (facoltativa: ogni utente può usare la propria).
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      # Metti "false" per disabilitare la registrazione dopo aver creato gli utenti.
+      REGISTRATION_OPEN: ${REGISTRATION_OPEN:-true}
+      DATA_DIR: /app/data
+    volumes:
+      - webmail-data:/app/data
     restart: unless-stopped
     healthcheck:
       test:
@@ -22,3 +31,6 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+
+volumes:
+  webmail-data:

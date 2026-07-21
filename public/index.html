@@ -4,7 +4,6 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Webmail</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link
       rel="icon"
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📬</text></svg>"
@@ -12,90 +11,112 @@
     <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
-    <!-- ================= LOGIN ================= -->
-    <div id="login-view" class="login-view hidden">
+    <!-- ================= AUTH (app account) ================= -->
+    <div id="auth-view" class="login-view hidden">
       <div class="login-card">
         <div class="login-brand">
           <div class="brand-badge">📬</div>
           <h1>Webmail</h1>
-          <p>Accedi con il tuo account IMAP / SMTP</p>
+          <p id="auth-subtitle">Accedi al tuo account</p>
         </div>
 
-        <div class="preset-row" id="preset-row">
-          <button type="button" class="preset" data-preset="gmail">Gmail</button>
-          <button type="button" class="preset" data-preset="outlook">Outlook</button>
-          <button type="button" class="preset" data-preset="yahoo">Yahoo</button>
-          <button type="button" class="preset" data-preset="icloud">iCloud</button>
+        <div class="preset-row" id="auth-tabs">
+          <button type="button" class="preset active" data-mode="login">Accedi</button>
+          <button type="button" class="preset" data-mode="register">Registrati</button>
         </div>
 
-        <form id="login-form" class="login-form">
+        <form id="auth-form" class="login-form">
           <label class="field">
-            <span>Indirizzo email</span>
-            <input type="email" name="email" placeholder="tu@esempio.com" required autocomplete="username" />
+            <span>Username</span>
+            <input type="text" name="username" placeholder="il tuo username" required autocomplete="username" />
           </label>
-
           <label class="field">
             <span>Password</span>
-            <input type="password" name="password" placeholder="Password o App Password" required autocomplete="current-password" />
+            <input type="password" name="password" placeholder="password" required autocomplete="current-password" />
+          </label>
+          <div id="auth-error" class="login-error hidden"></div>
+          <button type="submit" class="btn-primary btn-block" id="auth-btn">
+            <span class="btn-label">Accedi</span>
+          </button>
+        </form>
+        <p class="login-note">Le tue impostazioni email sono cifrate e salvate in modo sicuro.</p>
+      </div>
+    </div>
+
+    <!-- ================= SETTINGS (mail account) ================= -->
+    <div id="settings-view" class="login-view hidden">
+      <div class="login-card wide">
+        <div class="login-brand">
+          <div class="brand-badge">⚙️</div>
+          <h1>Configura la tua email</h1>
+          <p>Inserisci il server IMAP per leggere la posta. L'invio avviene via Resend dallo stesso indirizzo.</p>
+        </div>
+
+        <div class="preset-row" id="settings-presets">
+          <button type="button" class="preset" data-preset="gmail">Gmail</button>
+          <button type="button" class="preset" data-preset="outlook">Outlook</button>
+          <button type="button" class="preset" data-preset="aruba">Aruba</button>
+          <button type="button" class="preset" data-preset="libero">Libero</button>
+        </div>
+
+        <form id="settings-form" class="login-form">
+          <label class="field">
+            <span>Indirizzo email</span>
+            <input type="email" name="email" placeholder="tu@tuodominio.com" required autocomplete="email" />
           </label>
 
-          <div id="resend-note" class="resend-note hidden">
-            ⚡ Invio gestito da <strong>Resend</strong> (via HTTPS). Devi
-            configurare solo il server IMAP di ricezione.
+          <div class="server-grid one">
+            <div class="server-col">
+              <h3>IMAP (ricezione)</h3>
+              <label class="field">
+                <span>Host</span>
+                <input type="text" name="imapHost" placeholder="imap.tuodominio.com" required />
+              </label>
+              <div class="row">
+                <label class="field">
+                  <span>Porta</span>
+                  <input type="number" name="imapPort" value="993" required />
+                </label>
+                <label class="field checkbox">
+                  <input type="checkbox" name="imapSecure" checked />
+                  <span>SSL/TLS</span>
+                </label>
+              </div>
+              <label class="field">
+                <span>Password IMAP</span>
+                <input type="password" name="imapPassword" placeholder="password della casella" autocomplete="off" />
+                <small class="field-hint" id="imap-pass-hint">Lascia vuoto per non modificarla.</small>
+              </label>
+            </div>
           </div>
 
-          <details class="advanced">
-            <summary>Impostazioni server</summary>
-            <div class="server-grid">
-              <div class="server-col">
-                <h3>IMAP (in arrivo)</h3>
-                <label class="field">
-                  <span>Host</span>
-                  <input type="text" name="imapHost" placeholder="imap.esempio.com" required />
-                </label>
-                <div class="row">
-                  <label class="field">
-                    <span>Porta</span>
-                    <input type="number" name="imapPort" value="993" required />
-                  </label>
-                  <label class="field checkbox">
-                    <input type="checkbox" name="imapSecure" checked />
-                    <span>SSL/TLS</span>
-                  </label>
-                </div>
-              </div>
-
-              <div class="server-col" id="smtp-col">
-                <h3>SMTP (in uscita)</h3>
-                <label class="field">
-                  <span>Host</span>
-                  <input type="text" name="smtpHost" placeholder="smtp.esempio.com" required />
-                </label>
-                <div class="row">
-                  <label class="field">
-                    <span>Porta</span>
-                    <input type="number" name="smtpPort" value="465" required />
-                  </label>
-                  <label class="field checkbox">
-                    <input type="checkbox" name="smtpSecure" checked />
-                    <span>SSL/TLS</span>
-                  </label>
-                </div>
-              </div>
+          <details class="advanced" id="resend-advanced">
+            <summary>Invio email (Resend)</summary>
+            <div class="resend-box">
+              <p class="field-hint" id="resend-global-note"></p>
+              <label class="field">
+                <span>Resend API key <em>(facoltativa)</em></span>
+                <input type="password" name="resendKey" placeholder="re_..." autocomplete="off" />
+                <small class="field-hint">
+                  Se lasci vuoto, viene usata la chiave del server (se configurata).
+                  Il mittente sarà il tuo indirizzo: il dominio deve essere
+                  verificato su resend.com/domains.
+                </small>
+              </label>
             </div>
           </details>
 
-          <div id="login-error" class="login-error hidden"></div>
-          <div id="diag-result" class="diag-result hidden"></div>
+          <div id="settings-error" class="login-error hidden"></div>
+          <div id="settings-diag" class="diag-result hidden"></div>
 
-          <button type="submit" class="btn-primary btn-block" id="login-btn">
-            <span class="btn-label">Accedi</span>
+          <button type="submit" class="btn-primary btn-block" id="settings-btn">
+            <span class="btn-label">Salva e continua</span>
           </button>
-          <button type="button" class="btn-ghost btn-block diag-btn" id="diag-btn">
-            Verifica connessione ai server
+          <button type="button" class="btn-ghost btn-block" id="settings-diag-btn">
+            Verifica connessione IMAP
           </button>
+          <button type="button" class="btn-ghost btn-block" id="settings-logout">Esci</button>
         </form>
-        <p class="login-note">Le credenziali restano solo in memoria sul server, protette da un cookie di sessione.</p>
       </div>
     </div>
 
@@ -113,6 +134,9 @@
         <nav class="folders" id="folder-list"></nav>
         <div class="sidebar-footer">
           <span class="user-email" id="user-email"></span>
+          <button class="icon-btn" id="settings-btn-app" title="Impostazioni">
+            <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M19.14 12.94a7.6 7.6 0 0 0 .05-1.88l2-1.56a.5.5 0 0 0 .12-.64l-1.9-3.28a.5.5 0 0 0-.6-.22l-2.36.95a7.3 7.3 0 0 0-1.62-.94l-.36-2.5a.5.5 0 0 0-.5-.42h-3.8a.5.5 0 0 0-.5.42l-.36 2.5c-.58.24-1.12.56-1.62.94l-2.36-.95a.5.5 0 0 0-.6.22L1.83 8.86a.5.5 0 0 0 .12.64l2 1.56a7.6 7.6 0 0 0 0 1.88l-2 1.56a.5.5 0 0 0-.12.64l1.9 3.28c.14.24.42.32.66.22l2.36-.95c.5.38 1.04.7 1.62.94l.36 2.5c.04.24.25.42.5.42h3.8c.25 0 .46-.18.5-.42l.36-2.5c.58-.24 1.12-.56 1.62-.94l2.36.95c.24.1.52.02.66-.22l1.9-3.28a.5.5 0 0 0-.12-.64l-2-1.56zM12 15.5A3.5 3.5 0 1 1 12 8.5a3.5 3.5 0 0 1 0 7z"/></svg>
+          </button>
           <button class="icon-btn" id="logout-btn" title="Esci">
             <svg viewBox="0 0 24 24" width="18" height="18"><path fill="currentColor" d="M16 17v-3H9v-4h7V7l5 5-5 5zM14 2a2 2 0 0 1 2 2v2h-2V4H4v16h10v-2h2v2a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10z"/></svg>
           </button>

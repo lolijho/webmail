@@ -1,160 +1,123 @@
 # 📬 Webmail
 
-Una webmail semplice e moderna: legge la posta via **IMAP** e invia via **SMTP**.
-Interfaccia pulita, tondeggiante, con supporto tema chiaro/scuro.
+Webmail **multi-tenant**, semplice e moderna. Ogni utente ha un proprio account
+(username + password), configura il suo server **IMAP** per leggere la posta e
+invia dallo **stesso indirizzo** tramite **Resend** (API HTTPS). Interfaccia
+pulita e tondeggiante, tema chiaro/scuro.
 
-![Node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)
+![Node](https://img.shields.io/badge/node-%3E%3D22.5-brightgreen)
+
+## Perché Resend per l'invio
+
+Molti host cloud/VPS (e Coolify) **bloccano le porte SMTP in uscita**
+(25/465/587) per anti-spam. Resend invia via **API HTTPS sulla porta 443**, che
+non viene mai bloccata — così la ricezione resta su IMAP e l'invio funziona
+comunque.
 
 ## Caratteristiche
 
-- 🔐 Login con qualsiasi account IMAP/SMTP (preset per Gmail, Outlook, Yahoo, iCloud)
-- 📥 Lettura delle cartelle e dei messaggi via IMAP
-- 📖 Rendering sicuro delle email HTML in un `iframe` in sandbox
-- 📎 Download degli allegati
-- ✍️ Composizione, risposta e invio via SMTP
-- 🔍 Ricerca, paginazione, contrassegno (stella) ed eliminazione
+- 🔐 Account applicativi con username + password (hash scrypt)
+- 👥 Multi-tenant: ogni utente ha le sue impostazioni email, isolate e cifrate
+- 📥 Lettura IMAP: cartelle, messaggi, ricerca, allegati
+- 📖 Rendering sicuro dell'HTML in un `iframe` sandbox
+- ✍️ Composizione, risposta e invio via Resend dallo stesso indirizzo
+- 🔑 Chiave Resend globale (server) **oppure** una per ogni utente
+- 🗄️ Persistenza SQLite (built-in `node:sqlite`, nessuna dipendenza nativa)
+- 🔒 Segreti (password IMAP, chiavi Resend) cifrati con AES-256-GCM
 - 🌗 Tema chiaro/scuro automatico, layout responsive
 
 ## Come funziona
 
 ```
-Browser  ──HTTP/JSON──►  Server Express  ──IMAP──►  server di posta (lettura)
-                                        └─SMTP──►  server di posta (invio)
+Browser ──HTTP/JSON──► Server Express ──IMAP──► server di posta (lettura)
+                                      └─HTTPS─► Resend API (invio)
+Utenti + config email  ──►  SQLite (cifrato)  in DATA_DIR
 ```
 
-Le credenziali vengono verificate al login e restano **solo in memoria** sul
-server, associate a un ID di sessione conservato in un cookie `httpOnly`.
-Nessuna password viene scritta su disco. Ogni richiesta apre una connessione
-IMAP/SMTP di breve durata.
-
-## Avvio
+## Avvio locale
 
 ```bash
 npm install
-npm start
+npm start           # http://localhost:3000
 ```
 
-Poi apri <http://localhost:3000>.
+Primo accesso: **Registrati**, poi configura email + IMAP. L'invio richiede una
+chiave Resend (globale via `RESEND_API_KEY`, o personale nelle impostazioni).
 
-Per lo sviluppo con ricarica automatica:
+## Variabili d'ambiente
 
-```bash
-npm run dev
-```
-
-### Configurazione
-
-Copia `.env.example` in `.env` per personalizzare la porta:
-
-```bash
-cp .env.example .env
-```
-
-| Variabile   | Default       | Descrizione                                     |
-| ----------- | ------------- | ----------------------------------------------- |
-| `PORT`      | `3000`        | Porta del server HTTP                           |
-| `HOST`      | `0.0.0.0`     | Indirizzo di bind (utile nei container)         |
-| `NODE_ENV`  | `development` | Con `production` i cookie diventano `secure`    |
+| Variabile          | Default       | Descrizione                                                        |
+| ------------------ | ------------- | ------------------------------------------------------------------ |
+| `PORT`             | `3000`        | Porta del server HTTP                                              |
+| `HOST`             | `0.0.0.0`     | Indirizzo di bind                                                  |
+| `NODE_ENV`         | `development` | Con `production` i cookie diventano `secure` (HTTPS)              |
+| `DATA_DIR`         | `./data`      | Cartella con database SQLite e chiave di cifratura                 |
+| `ENCRYPTION_KEY`   | *(auto)*      | Chiave AES per i segreti. Genera con `openssl rand -base64 32`     |
+| `RESEND_API_KEY`   | —             | Chiave Resend globale (default per tutti gli utenti)              |
+| `REGISTRATION_OPEN`| `true`        | Metti `false` per chiudere le registrazioni                       |
 
 ## Deploy su Coolify
 
-L'app è pronta per [Coolify](https://coolify.io): include un `Dockerfile`,
-un `docker-compose.yml`, un endpoint di health check (`/health`) e gira come
-utente non privilegiato bindando su `0.0.0.0`.
-
-1. In Coolify: **New Resource → Application** e collega questo repository
-   (branch `claude/webmail-imap-smtp-7k1zbs` o quello che hai unito).
-2. **Build Pack**: scegli **Dockerfile** (rilevato automaticamente).
-3. **Port**: imposta la porta esposta a **3000**.
-4. **Health Check Path**: `/health`.
-5. **Environment variables** (opzionali):
-   - `NODE_ENV=production` — già impostata nel Dockerfile; abilita i cookie `secure`
-   - `PORT=3000` — cambiala solo se esponi una porta diversa
-6. Assegna un dominio: Coolify gestisce HTTPS via Traefik. L'app ha
-   `trust proxy` attivo, quindi i cookie di sessione `secure` funzionano
-   dietro il proxy.
+1. **New Resource → Application**, collega questo repository.
+2. **Build Pack: Dockerfile** (rilevato automaticamente).
+3. **Port**: `3000` · **Health Check Path**: `/health`.
+4. **Storage**: monta un volume persistente su **`/app/data`** (contiene il
+   database e la chiave di cifratura — senza volume, i dati si perdono a ogni
+   deploy).
+5. **Environment variables**:
+   - `NODE_ENV=production`
+   - `ENCRYPTION_KEY=` → genera con `openssl rand -base64 32` (impostala, non
+     lasciarla auto-generare, così sopravvive alla ricreazione del container)
+   - `RESEND_API_KEY=` → la tua chiave Resend (facoltativa se ogni utente usa la propria)
+6. Assegna un dominio (HTTPS via Traefik). L'app ha `trust proxy` attivo.
 7. **Deploy**.
 
-> In alternativa puoi usare il build pack **Docker Compose** puntando a
-> `docker-compose.yml`.
+## Configurare Resend (invio)
 
-### Build ed esecuzione manuale con Docker
-
-```bash
-docker build -t webmail .
-docker run -p 3000:3000 webmail
-# oppure
-docker compose up --build
-```
-
-> ⚠️ Le sessioni sono in memoria: al riavvio del container gli utenti devono
-> rifare il login. Per un'app a singola istanza è del tutto adeguato.
-
-## Note sui provider
-
-Molti provider (es. Gmail) richiedono una **App Password** invece della
-password normale quando è attiva la verifica in due passaggi. I preset nel
-form di login compilano automaticamente host e porte corrette.
-
-| Provider | IMAP                      | SMTP                     |
-| -------- | ------------------------- | ------------------------ |
-| Gmail    | imap.gmail.com:993        | smtp.gmail.com:465       |
-| Outlook  | outlook.office365.com:993 | smtp.office365.com:587   |
-| Yahoo    | imap.mail.yahoo.com:993   | smtp.mail.yahoo.com:465  |
-| iCloud   | imap.mail.me.com:993      | smtp.mail.me.com:587     |
+1. Crea un account su [resend.com](https://resend.com).
+2. **Domains → Add Domain** → il tuo dominio (es. `danceartsfaculty.com`) e
+   aggiungi i record DNS (SPF/DKIM) indicati. Attendi lo stato *Verified*.
+3. **API Keys → Create** → copia la chiave `re_...`.
+4. Impostala come `RESEND_API_KEY` sul server, **oppure** ogni utente la
+   inserisce nelle proprie impostazioni.
+5. Il mittente è l'indirizzo email dell'utente: **il suo dominio deve essere
+   verificato** nell'account Resend usato.
 
 ## Risoluzione problemi
 
-| Errore                                                    | Causa probabile                                                              | Soluzione                                                                                             |
-| --------------------------------------------------------- | --------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| *Autenticazione IMAP/SMTP fallita* / `Command failed`     | Password errata, oppure il provider richiede una App Password con la 2FA     | Genera una **App Password** (Gmail, Outlook, Yahoo, iCloud) e usala al posto della password normale  |
-| *Timeout di connessione* / `Failed to establish connection in required time` | Il container non raggiunge il server di posta                | Verifica host/porta; sul VPS/Coolify controlla che il **firewall consenta le porte in uscita**       |
-| *Host non trovato*                                        | Nome host errato                                                            | Controlla `imap.<provider>` / `smtp.<provider>`                                                       |
-| *Connessione rifiutata*                                   | Porta errata o SSL/TLS non coerente con la porta                            | IMAP: 993 (SSL). SMTP: 465 (SSL) oppure 587 (STARTTLS, togli la spunta SSL/TLS)                       |
+| Sintomo                                | Causa / Soluzione                                                                 |
+| -------------------------------------- | --------------------------------------------------------------------------------- |
+| Login IMAP: *timeout*                  | Host blocca la porta IMAP in uscita, o host/porta errati. Usa «Verifica connessione IMAP» nelle impostazioni |
+| Login IMAP: *autenticazione fallita*   | Password errata; con 2FA usa una **App Password**                                 |
+| Invio: *dominio non verificato*        | Verifica il dominio del mittente su resend.com/domains                            |
+| Invio: *API key non valida*            | Controlla `RESEND_API_KEY` o la chiave inserita dall'utente                       |
+| Dati persi dopo il deploy              | Manca il volume su `/app/data`                                                     |
 
-> **Porte di posta in uscita su Coolify/VPS.** Molti provider cloud (Hetzner,
-> DigitalOcean, AWS…) bloccano di default le porte SMTP in uscita (25, 465,
-> 587) per contrastare lo spam, e talvolta anche la 993 (IMAP). Se il login va
-> in timeout mentre le stesse credenziali funzionano in locale, quasi
-> certamente è il firewall dell'host: apri le porte in uscita dal pannello del
-> provider, oppure usa un servizio SMTP relay dedicato.
-
-### Verifica della connettività
-
-Nella schermata di login, il pulsante **«Verifica connessione ai server»**
-testa la raggiungibilità TCP di IMAP e SMTP *dall'interno del container* e
-mostra, per ciascun servizio, se il DNS risolve e se la porta risponde:
-
-- ✅ **raggiungibile** → il problema è nelle credenziali (usa una App Password)
-- ❌ **timeout** → la porta è bloccata dal firewall/hosting (apri le porte in uscita)
-- ❌ **host non trovato** → nome del server errato
-
-Da riga di comando lo stesso controllo è disponibile via API:
-
-```bash
-curl "http://localhost:3000/api/diag?imapHost=imap.gmail.com&imapPort=993&smtpHost=smtp.gmail.com&smtpPort=465"
-```
-
-> L'app forza inoltre la risoluzione **IPv4-first**: molti host di posta
-> pubblicano record IPv6 (AAAA) ma i container Coolify/VPS spesso non hanno
-> routing IPv6, il che causerebbe timeout di connessione.
+> L'app forza la risoluzione **IPv4-first**: molti host di posta pubblicano
+> record IPv6 (AAAA) ma i container spesso non hanno routing IPv6, causando
+> timeout di connessione.
 
 ## Struttura
 
 ```
-server.js          # server Express + rotte API
+server.js          # Express: auth, impostazioni, rotte mail, invio
 lib/
-  sessions.js      # store di sessione in memoria
+  db.js            # SQLite (utenti + account email cifrati)
+  auth.js          # registrazione/login, hash scrypt
+  crypto.js        # cifratura AES-256-GCM dei segreti
+  sessions.js      # sessioni in memoria (cookie httpOnly)
   imap.js          # lettura IMAP (imapflow + mailparser)
-  smtp.js          # invio SMTP (nodemailer)
+  resend.js        # invio via API Resend (HTTPS)
+  diag.js          # diagnostica raggiungibilità TCP
 public/
-  index.html       # markup dell'interfaccia
+  index.html       # login app · impostazioni · casella
   style.css        # stile moderno tondeggiante
   app.js           # logica front-end
 ```
 
 ## Sicurezza
 
-- Le email HTML sono isolate in un `iframe` con `sandbox` (niente script).
-- Le credenziali non vengono mai persistite.
-- In produzione servi l'app dietro HTTPS e imposta `NODE_ENV=production`.
+- Password degli account: hash **scrypt** con salt per-utente.
+- Segreti email: cifrati **AES-256-GCM**, mai in chiaro nel database.
+- Email HTML isolate in `iframe` con `sandbox`.
+- In produzione servi dietro HTTPS con `NODE_ENV=production`.

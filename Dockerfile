@@ -8,7 +8,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production \
     PORT=3000 \
-    HOST=0.0.0.0
+    HOST=0.0.0.0 \
+    DATA_DIR=/app/data
 
 # Install only production dependencies (leverages the layer cache).
 COPY package.json package-lock.json ./
@@ -16,6 +17,10 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 # App source.
 COPY . .
+
+# Persistent data dir (SQLite DB + encryption key), owned by the runtime user.
+RUN mkdir -p /app/data && chown -R node:node /app/data
+VOLUME ["/app/data"]
 
 # Run as the built-in unprivileged user.
 USER node
