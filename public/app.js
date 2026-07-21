@@ -158,11 +158,21 @@ function fillSettingsForm() {
   form.imapSecure.checked = a ? a.imapSecure : true;
   form.imapPassword.value = '';
   form.resendKey.value = '';
+  form.smtpHost.value = a ? a.smtpHost : '';
+  form.smtpPort.value = a && a.smtpPort ? a.smtpPort : 465;
+  form.smtpSecure.checked = a ? a.smtpSecure : true;
   $('#imap-pass-hint').style.display = a ? 'block' : 'none';
   $('#resend-global-note').textContent = state.globalResend
-    ? '✅ Il server ha una chiave Resend configurata: puoi inviare senza inserirne una tua (dal tuo indirizzo, dominio verificato).'
-    : '⚠️ Nessuna chiave Resend sul server: inseriscine una qui per poter inviare.';
+    ? '✅ Il server ha una chiave Resend configurata: usata solo se non imposti un server SMTP.'
+    : 'Inserisci una chiave solo se non usi un server SMTP.';
 }
+
+// Port 465 → SSL on; 587/25 → STARTTLS (SSL off). Keep the toggle in sync.
+$('#settings-form').smtpPort.addEventListener('input', (e) => {
+  const p = Number(e.target.value);
+  if (p === 465) $('#settings-form').smtpSecure.checked = true;
+  else if (p === 587 || p === 25) $('#settings-form').smtpSecure.checked = false;
+});
 
 $('#settings-form').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -183,6 +193,9 @@ $('#settings-form').addEventListener('submit', async (e) => {
         imapSecure: form.imapSecure.checked,
         imapPassword: form.imapPassword.value,
         resendKey: form.resendKey.value.trim() || undefined,
+        smtpHost: form.smtpHost.value.trim(),
+        smtpPort: Number(form.smtpPort.value),
+        smtpSecure: form.smtpSecure.checked,
       }),
     });
     state.account = data.account;

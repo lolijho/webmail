@@ -193,6 +193,23 @@ textarea {
 .resend-box .field {
   margin-top: 8px;
 }
+.send-h3 {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 4px 0 6px;
+}
+.send-h3.divider {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.resend-box code {
+  background: var(--surface-hover);
+  padding: 1px 5px;
+  border-radius: 5px;
+  font-size: 12px;
+}
 .server-grid.one {
   grid-template-columns: 1fr;
 }

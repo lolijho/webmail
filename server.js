@@ -23,6 +23,7 @@ import {
   verifyImap,
 } from './lib/imap.js';
 import { resolveResendKey, sendViaResend } from './lib/resend.js';
+import { sendViaSmtp } from './lib/smtp.js';
 import { probe } from './lib/diag.js';
 
 dotenv.config();
@@ -136,7 +137,10 @@ app.get(
     const user = session && getUserById(session.userId);
     if (!user) return res.status(401).json({ error: 'Not authenticated' });
     const account = getAccount(user.id);
-    const canSend = !!process.env.RESEND_API_KEY || !!(account && account.hasResendKey);
+    const canSend =
+      !!(account && account.hasSmtp) ||
+      !!process.env.RESEND_API_KEY ||
+      !!(account && account.hasResendKey);
     res.json({
       username: user.username,
       account, // null until configured
@@ -159,8 +163,17 @@ app.post(
   '/api/settings',
   requireAuth,
   wrap(async (req, res) => {
-    const { email, imapHost, imapPort, imapSecure, imapPassword, resendKey } =
-      req.body || {};
+    const {
+      email,
+      imapHost,
+      imapPort,
+      imapSecure,
+      imapPassword,
+      resendKey,
+      smtpHost,
+      smtpPort,
+      smtpSecure,
+    } = req.body || {};
     if (!email || !imapHost) {
       return res.status(400).json({ error: 'Email e host IMAP sono obbligatori' });
     }
@@ -189,6 +202,9 @@ app.post(
       imapSecure: imapSecure !== false,
       imapPassword,
       resendKey,
+      smtpHost,
+      smtpPort,
+      smtpSecure: smtpSecure !== false,
     });
     res.json({ ok: true, account });
   })
@@ -265,26 +281,22 @@ app.post(
       req.body || {};
     if (!to) return res.status(400).json({ error: 'Destinatario obbligatorio' });
 
-    const apiKey = resolveResendKey(req.account.resendKey);
-    if (!apiKey) {
-      return res.status(400).json({
-        error:
-          "Invio non configurato: aggiungi una API key Resend nelle impostazioni, oppure imposta RESEND_API_KEY sul server.",
-      });
-    }
+    const msg = { to, cc, bcc, subject, text, html, inReplyTo, references };
+    let info;
 
-    const info = await sendViaResend({
-      apiKey,
-      from: req.account.email,
-      to,
-      cc,
-      bcc,
-      subject,
-      text,
-      html,
-      inReplyTo,
-      references,
-    });
+    if (req.account.smtp) {
+      // Send directly through the user's own SMTP server.
+      info = await sendViaSmtp(req.account, msg);
+    } else {
+      const apiKey = resolveResendKey(req.account.resendKey);
+      if (!apiKey) {
+        return res.status(400).json({
+          error:
+            "Invio non configurato: imposta il server SMTP oppure una API key Resend nelle impostazioni.",
+        });
+      }
+      info = await sendViaResend({ apiKey, from: req.account.email, ...msg });
+    }
     res.json({ ok: true, messageId: info.messageId });
   })
 );

@@ -20,7 +20,8 @@ comunque.
 - 👥 Multi-tenant: ogni utente ha le sue impostazioni email, isolate e cifrate
 - 📥 Lettura IMAP: cartelle, messaggi, ricerca, allegati
 - 📖 Rendering sicuro dell'HTML in un `iframe` sandbox
-- ✍️ Composizione, risposta e invio via Resend dallo stesso indirizzo
+- ✍️ Composizione, risposta e invio dallo stesso indirizzo
+- 📤 Invio via **SMTP** del proprio server **oppure** via **Resend** (HTTPS)
 - 🔑 Chiave Resend globale (server) **oppure** una per ogni utente
 - 🗄️ Persistenza SQLite (built-in `node:sqlite`, nessuna dipendenza nativa)
 - 🔒 Segreti (password IMAP, chiavi Resend) cifrati con AES-256-GCM
@@ -29,10 +30,31 @@ comunque.
 ## Come funziona
 
 ```
-Browser ──HTTP/JSON──► Server Express ──IMAP──► server di posta (lettura)
-                                      └─HTTPS─► Resend API (invio)
+Browser ──HTTP/JSON──► Server Express ──IMAP──────► server di posta (lettura)
+                                      ├─SMTP──────► server di posta (invio diretto)
+                                      └─HTTPS─────► Resend API (invio alternativo)
 Utenti + config email  ──►  SQLite (cifrato)  in DATA_DIR
 ```
+
+## Invio: SMTP o Resend
+
+Ogni utente sceglie nelle impostazioni come inviare:
+
+- **SMTP del proprio server** (consigliato se le porte non sono bloccate):
+  host `smtp.tuodominio.com`, porta `465` (SSL) o `587` (STARTTLS). Usa la stessa
+  password della casella. L'invio parte dal tuo mailbox con il DKIM già configurato.
+- **Resend** (se l'host blocca le porte SMTP in uscita): invia via HTTPS/443.
+  Richiede il dominio del mittente verificato su resend.com/domains.
+
+Se è impostato un host SMTP, ha la priorità; altrimenti si usa Resend.
+
+> **Nota firewall.** Hetzner blocca la porta **25** in uscita di default, ma di
+> solito lascia aperte **465/587**: l'SMTP diretto del tuo server funziona.
+> Se invece sono tutte bloccate, usa Resend.
+>
+> **Nota Cloudflare.** I sottodomini di posta (`mail.`, `smtp.`, `imap.`) NON
+> vanno messi dietro il proxy Cloudflare (nuvola arancione): il proxy gestisce
+> solo HTTP/HTTPS, quindi IMAP/SMTP andrebbero in timeout. Tienili «DNS only».
 
 ## Avvio locale
 

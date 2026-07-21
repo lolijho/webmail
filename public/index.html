@@ -90,17 +90,38 @@
             </div>
           </div>
 
-          <details class="advanced" id="resend-advanced">
-            <summary>Invio email (Resend)</summary>
+          <details class="advanced" id="send-advanced" open>
+            <summary>Invio email (uscita)</summary>
             <div class="resend-box">
+              <h3 class="send-h3">📤 Server SMTP (invio diretto)</h3>
+              <p class="field-hint">
+                Invia dal tuo server. Consigliato: host <code>smtp.tuodominio.com</code>,
+                porta <code>465</code> (SSL) o <code>587</code> (STARTTLS). Usa la
+                stessa password della casella. Lascia vuoto per usare Resend.
+              </p>
+              <label class="field">
+                <span>Host SMTP</span>
+                <input type="text" name="smtpHost" placeholder="smtp.tuodominio.com" />
+              </label>
+              <div class="row">
+                <label class="field">
+                  <span>Porta</span>
+                  <input type="number" name="smtpPort" value="465" />
+                </label>
+                <label class="field checkbox">
+                  <input type="checkbox" name="smtpSecure" checked />
+                  <span>SSL/TLS</span>
+                </label>
+              </div>
+
+              <h3 class="send-h3 divider">⚡ Oppure Resend (via HTTPS)</h3>
               <p class="field-hint" id="resend-global-note"></p>
               <label class="field">
                 <span>Resend API key <em>(facoltativa)</em></span>
                 <input type="password" name="resendKey" placeholder="re_..." autocomplete="off" />
                 <small class="field-hint">
-                  Se lasci vuoto, viene usata la chiave del server (se configurata).
-                  Il mittente sarà il tuo indirizzo: il dominio deve essere
-                  verificato su resend.com/domains.
+                  Usata solo se non imposti un server SMTP. Il mittente è il tuo
+                  indirizzo: il dominio dev'essere verificato su resend.com/domains.
                 </small>
               </label>
             </div>
